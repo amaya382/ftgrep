@@ -2,7 +2,7 @@
 
 <h1 align="center">📃🔍 ftgrep</h1>
 
-<p align="center"><b>grep-like full-text search with persistent indexes and incremental sync</b></p>
+<p align="center"><b>grep-like instant full-text search with automated indexing</b></p>
 
 > [!WARNING]
 > This is an experimental implementation. Expect bugs and missing features.
@@ -11,10 +11,11 @@ ftgrep is a full-text search tool for the terminal, built on [tantivy](https://g
 
 ## Why ftgrep?
 
-- **grep-compatible output** — `path:line:content` format, colorized matches in TTY, `--json` for scripting
-- **Persistent index with auto-sync** — build once, search instantly; mtime-based incremental sync runs automatically before each search
+- **Automated indexing** — full-text search instantly; mtime-based incremental indexing runs automatically before each search
+- **Multi-language support by default** — morphological analysis (Japanese/IPADIC) and bigram fallback for broad coverage
+- **Search not just by body, but also by frontmatter / filename** — no setup required for markdown document search
+- **grep-compatible interface** — `path:line:content` format, colorized matches in TTY, `--json` for scripting
 - **Line and file modes** — line mode for grep-style results, file mode for document search with frontmatter support
-- **Multi-language support** — morphological analysis (Japanese/IPADIC) and bigram fallback for broad coverage
 - **Flexible targeting** — files, directories, or stdin; mix freely in one command
 
 ## 🚀 Quick Start
