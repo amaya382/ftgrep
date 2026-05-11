@@ -107,10 +107,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: amaya382/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+
       - name: Update Homebrew formula
         env:
-          GH_TOKEN: ${{ github.token }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
           VERSION="$RELEASE_TAG"
@@ -126,76 +130,57 @@ jobs:
           DARWIN_X86_64_SHA="$(fetch_sha ftgrep_Darwin_x86_64)"
           DARWIN_ARM64_SHA="$(fetch_sha ftgrep_Darwin_arm64)"
 
-          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/amaya382/homebrew-tap.git"
+          {
+            echo '# typed: false'
+            echo '# frozen_string_literal: true'
+            echo ''
+            echo 'class Ftgrep < Formula'
+            echo '  desc "Full-text grep tool with Japanese morphological analysis indexing"'
+            echo '  homepage "https://github.com/amaya382/ftgrep"'
+            echo "  version \"$VER\""
+            echo '  license "MIT"'
+            echo ''
+            echo '  on_macos do'
+            echo '    if Hardware::CPU.intel?'
+            echo "      url \"$LATEST_URL/ftgrep_Darwin_x86_64.tar.gz\""
+            echo "      sha256 \"$DARWIN_X86_64_SHA\""
+            echo ''
+            echo '      def install'
+            echo '        bin.install "ftgrep"'
+            echo '      end'
+            echo '    end'
+            echo '    if Hardware::CPU.arm?'
+            echo "      url \"$LATEST_URL/ftgrep_Darwin_arm64.tar.gz\""
+            echo "      sha256 \"$DARWIN_ARM64_SHA\""
+            echo ''
+            echo '      def install'
+            echo '        bin.install "ftgrep"'
+            echo '      end'
+            echo '    end'
+            echo '  end'
+            echo ''
+            echo '  on_linux do'
+            echo '    if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?'
+            echo "      url \"$LATEST_URL/ftgrep_Linux_x86_64.tar.gz\""
+            echo "      sha256 \"$LINUX_X86_64_SHA\""
+            echo ''
+            echo '      def install'
+            echo '        bin.install "ftgrep"'
+            echo '      end'
+            echo '    end'
+            echo '    if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?'
+            echo "      url \"$LATEST_URL/ftgrep_Linux_arm64.tar.gz\""
+            echo "      sha256 \"$LINUX_ARM64_SHA\""
+            echo ''
+            echo '      def install'
+            echo '        bin.install "ftgrep"'
+            echo '      end'
+            echo '    end'
+            echo '  end'
+            echo 'end'
+          } > homebrew-tap/Formula/ftgrep.rb
+
           cd homebrew-tap
-
-          export FTGREP_VER="$VER"
-          export FTGREP_LATEST_URL="$LATEST_URL"
-          export FTGREP_LINUX_X86_64_SHA="$LINUX_X86_64_SHA"
-          export FTGREP_LINUX_ARM64_SHA="$LINUX_ARM64_SHA"
-          export FTGREP_DARWIN_X86_64_SHA="$DARWIN_X86_64_SHA"
-          export FTGREP_DARWIN_ARM64_SHA="$DARWIN_ARM64_SHA"
-
-          python3 - > Formula/ftgrep.rb << 'PYEOF'
-import os
-
-ver = os.environ['FTGREP_VER']
-base = os.environ['FTGREP_LATEST_URL']
-lx = os.environ['FTGREP_LINUX_X86_64_SHA']
-la = os.environ['FTGREP_LINUX_ARM64_SHA']
-dx = os.environ['FTGREP_DARWIN_X86_64_SHA']
-da = os.environ['FTGREP_DARWIN_ARM64_SHA']
-
-print(f"""# typed: false
-# frozen_string_literal: true
-
-class Ftgrep < Formula
-  desc "Full-text grep tool with Japanese morphological analysis indexing"
-  homepage "https://github.com/amaya382/ftgrep"
-  version "{ver}"
-  license "MIT"
-
-  on_macos do
-    if Hardware::CPU.intel?
-      url "{base}/ftgrep_Darwin_x86_64.tar.gz"
-      sha256 "{dx}"
-
-      def install
-        bin.install "ftgrep"
-      end
-    end
-    if Hardware::CPU.arm?
-      url "{base}/ftgrep_Darwin_arm64.tar.gz"
-      sha256 "{da}"
-
-      def install
-        bin.install "ftgrep"
-      end
-    end
-  end
-
-  on_linux do
-    if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
-      url "{base}/ftgrep_Linux_x86_64.tar.gz"
-      sha256 "{lx}"
-
-      def install
-        bin.install "ftgrep"
-      end
-    end
-    if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
-      url "{base}/ftgrep_Linux_arm64.tar.gz"
-      sha256 "{la}"
-
-      def install
-        bin.install "ftgrep"
-      end
-    end
-  end
-end
-""")
-PYEOF
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/ftgrep.rb
