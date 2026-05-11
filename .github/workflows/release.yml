@@ -25,9 +25,6 @@ jobs:
             os: ubuntu-22.04
             pkg: ftgrep_Linux_arm64
             cross: true
-          - target: x86_64-apple-darwin
-            os: macos-13
-            pkg: ftgrep_Darwin_x86_64
           - target: aarch64-apple-darwin
             os: macos-14
             pkg: ftgrep_Darwin_arm64
@@ -35,9 +32,11 @@ jobs:
           # - target: x86_64-pc-windows-msvc
           #   os: windows-latest
           #   pkg: ftgrep_Windows_x86_64
+          #   cross: true
           # - target: aarch64-pc-windows-msvc
           #   os: windows-latest
           #   pkg: ftgrep_Windows_arm64
+          #   cross: true
 
     steps:
       - uses: actions/checkout@v4
@@ -128,7 +127,6 @@ jobs:
 
           LINUX_X86_64_SHA="$(fetch_sha ftgrep_Linux_x86_64)"
           LINUX_ARM64_SHA="$(fetch_sha ftgrep_Linux_arm64)"
-          DARWIN_X86_64_SHA="$(fetch_sha ftgrep_Darwin_x86_64)"
           DARWIN_ARM64_SHA="$(fetch_sha ftgrep_Darwin_arm64)"
 
           {
@@ -142,14 +140,6 @@ jobs:
             echo '  license "MIT"'
             echo ''
             echo '  on_macos do'
-            echo '    if Hardware::CPU.intel?'
-            echo "      url \"$LATEST_URL/ftgrep_Darwin_x86_64.tar.gz\""
-            echo "      sha256 \"$DARWIN_X86_64_SHA\""
-            echo ''
-            echo '      def install'
-            echo '        bin.install "ftgrep"'
-            echo '      end'
-            echo '    end'
             echo '    if Hardware::CPU.arm?'
             echo "      url \"$LATEST_URL/ftgrep_Darwin_arm64.tar.gz\""
             echo "      sha256 \"$DARWIN_ARM64_SHA\""
