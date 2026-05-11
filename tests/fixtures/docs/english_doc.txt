@@ -1,0 +1,5 @@
+This is a full-text search tool written in Rust.
+It supports both line mode and file mode indexing.
+The search results are ranked by relevance score.
+You can also filter results using include and exclude patterns.
+Binary files are automatically skipped during indexing.

@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+            pkg: ftgrep_Linux_x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04
+            pkg: ftgrep_Linux_arm64
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-13
+            pkg: ftgrep_Darwin_x86_64
+          - target: aarch64-apple-darwin
+            os: macos-14
+            pkg: ftgrep_Darwin_arm64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            pkg: ftgrep_Windows_x86_64
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            pkg: ftgrep_Windows_arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux aarch64)
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (native)
+        if: "!matrix.cross"
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          TARGET="${{ matrix.target }}"
+          PKG_NAME="${{ matrix.pkg }}"
+
+          mkdir -p "dist/${PKG_NAME}"
+          cp "target/${TARGET}/release/ftgrep" "dist/${PKG_NAME}/"
+
+          cd dist
+          tar czf "${PKG_NAME}.tar.gz" "${PKG_NAME}"
+          if command -v sha256sum &>/dev/null; then
+            sha256sum "${PKG_NAME}.tar.gz" | awk '{print $1}' > "${PKG_NAME}.tar.gz.sha256"
+          else
+            shasum -a 256 "${PKG_NAME}.tar.gz" | awk '{print $1}' > "${PKG_NAME}.tar.gz.sha256"
+          fi
+
+          gh release upload "$VERSION" "${PKG_NAME}.tar.gz" "${PKG_NAME}.tar.gz.sha256" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.event.release.tag_name }}"
+          $TARGET = "${{ matrix.target }}"
+          $PKG_NAME = "${{ matrix.pkg }}"
+
+          New-Item -ItemType Directory -Path "dist/${PKG_NAME}" -Force
+          Copy-Item "target/${TARGET}/release/ftgrep.exe" "dist/${PKG_NAME}/"
+
+          Set-Location dist
+          Compress-Archive -Path "${PKG_NAME}" -DestinationPath "${PKG_NAME}.zip"
+
+          $SHA = (Get-FileHash "${PKG_NAME}.zip" -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "${PKG_NAME}.zip.sha256" -Value $SHA
+
+          gh release upload "$VERSION" "${PKG_NAME}.zip" "${PKG_NAME}.zip.sha256" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  update-homebrew:
+    name: Update Homebrew formula
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update Homebrew formula
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="$RELEASE_TAG"
+          VER="${VERSION#v}"
+          LATEST_URL="https://github.com/amaya382/ftgrep/releases/latest/download"
+
+          fetch_sha() {
+            curl -fsSL "${LATEST_URL}/${1}.tar.gz.sha256"
+          }
+
+          LINUX_X86_64_SHA="$(fetch_sha ftgrep_Linux_x86_64)"
+          LINUX_ARM64_SHA="$(fetch_sha ftgrep_Linux_arm64)"
+          DARWIN_X86_64_SHA="$(fetch_sha ftgrep_Darwin_x86_64)"
+          DARWIN_ARM64_SHA="$(fetch_sha ftgrep_Darwin_arm64)"
+
+          git clone "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/amaya382/homebrew-tap.git"
+          cd homebrew-tap
+
+          export FTGREP_VER="$VER"
+          export FTGREP_LATEST_URL="$LATEST_URL"
+          export FTGREP_LINUX_X86_64_SHA="$LINUX_X86_64_SHA"
+          export FTGREP_LINUX_ARM64_SHA="$LINUX_ARM64_SHA"
+          export FTGREP_DARWIN_X86_64_SHA="$DARWIN_X86_64_SHA"
+          export FTGREP_DARWIN_ARM64_SHA="$DARWIN_ARM64_SHA"
+
+          python3 - > Formula/ftgrep.rb << 'PYEOF'
+import os
+
+ver = os.environ['FTGREP_VER']
+base = os.environ['FTGREP_LATEST_URL']
+lx = os.environ['FTGREP_LINUX_X86_64_SHA']
+la = os.environ['FTGREP_LINUX_ARM64_SHA']
+dx = os.environ['FTGREP_DARWIN_X86_64_SHA']
+da = os.environ['FTGREP_DARWIN_ARM64_SHA']
+
+print(f"""# typed: false
+# frozen_string_literal: true
+
+class Ftgrep < Formula
+  desc "Full-text grep tool with Japanese morphological analysis indexing"
+  homepage "https://github.com/amaya382/ftgrep"
+  version "{ver}"
+  license "MIT"
+
+  on_macos do
+    if Hardware::CPU.intel?
+      url "{base}/ftgrep_Darwin_x86_64.tar.gz"
+      sha256 "{dx}"
+
+      def install
+        bin.install "ftgrep"
+      end
+    end
+    if Hardware::CPU.arm?
+      url "{base}/ftgrep_Darwin_arm64.tar.gz"
+      sha256 "{da}"
+
+      def install
+        bin.install "ftgrep"
+      end
+    end
+  end
+
+  on_linux do
+    if Hardware::CPU.intel? && Hardware::CPU.is_64_bit?
+      url "{base}/ftgrep_Linux_x86_64.tar.gz"
+      sha256 "{lx}"
+
+      def install
+        bin.install "ftgrep"
+      end
+    end
+    if Hardware::CPU.arm? && Hardware::CPU.is_64_bit?
+      url "{base}/ftgrep_Linux_arm64.tar.gz"
+      sha256 "{la}"
+
+      def install
+        bin.install "ftgrep"
+      end
+    end
+  end
+end
+""")
+PYEOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/ftgrep.rb
+          git commit -m "Update ftgrep to ${VERSION}"
+          git push
